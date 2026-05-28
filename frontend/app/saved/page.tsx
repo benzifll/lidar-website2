@@ -10,7 +10,7 @@ export default function SavedMapsPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch(`${API_BASE}/api/maps`)
+    fetch(`${API_BASE}/api/maps`, { headers: { 'ngrok-skip-browser-warning': 'true' } })
       .then(res => res.json())
       .then(data => {
         setMaps(data);

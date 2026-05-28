@@ -13,7 +13,7 @@ export default function MapDetailsPage({ params }: { params: { id: string } }) {
   const [clickPos, setClickPos] = useState<{x: number, y: number} | null>(null);
 
   useEffect(() => {
-    fetch(`${API_BASE}/api/maps/${params.id}`)
+    fetch(`${API_BASE}/api/maps/${params.id}`, { headers: { 'ngrok-skip-browser-warning': 'true' } })
       .then(res => res.json())
       .then(data => {
         setMapData(data);
@@ -49,7 +49,7 @@ export default function MapDetailsPage({ params }: { params: { id: string } }) {
       if (data.success) {
         setIsModalOpen(false);
         // Reload map data to get the new artefact
-        const freshRes = await fetch(`${API_BASE}/api/maps/${params.id}`);
+        const freshRes = await fetch(`${API_BASE}/api/maps/${params.id}`, { headers: { 'ngrok-skip-browser-warning': 'true' } });
         const freshData = await freshRes.json();
         setMapData(freshData);
       }
@@ -115,9 +115,9 @@ export default function MapDetailsPage({ params }: { params: { id: string } }) {
                 </p>
                 
                 {art.media_type === 'video' ? (
-                  <video src={`${API_BASE}${art.media_url}`} controls style={{ width: '100%', borderRadius: '4px' }} />
+                  <video src={`/api/media?path=${art.media_url}`} controls style={{ width: '100%', borderRadius: '4px' }} />
                 ) : (
-                  <img src={`${API_BASE}${art.media_url}`} style={{ width: '100%', borderRadius: '4px' }} alt={art.header} />
+                  <img src={`/api/media?path=${art.media_url}`} style={{ width: '100%', borderRadius: '4px' }} alt={art.header} />
                 )}
                 {/* Delete artefact button */}
                 <button
@@ -127,7 +127,7 @@ export default function MapDetailsPage({ params }: { params: { id: string } }) {
                       const res = await fetch(`${API_BASE}/api/artefacts/${art.id}`, { method: 'DELETE' });
                       if (res.ok) {
                         // Refresh map data
-                        const freshRes = await fetch(`${API_BASE}/api/maps/${params.id}`);
+                        const freshRes = await fetch(`${API_BASE}/api/maps/${params.id}`, { headers: { 'ngrok-skip-browser-warning': 'true' } });
                         const freshData = await freshRes.json();
                         setMapData(freshData);
                       } else {

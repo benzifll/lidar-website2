@@ -12,7 +12,7 @@ export function MapCard({ map }: MapCardProps) {
       <div className="stat-card" style={{ cursor: 'pointer', transition: 'transform 0.2s', height: '100%' }}>
         {map.snapshot_url ? (
           <img 
-            src={`${API_BASE}${map.snapshot_url}`} 
+            src={`/api/media?path=${map.snapshot_url}`} 
             alt={map.name} 
             style={{ width: '100%', height: '200px', objectFit: 'cover', borderRadius: '8px', marginBottom: '12px' }} 
           />
