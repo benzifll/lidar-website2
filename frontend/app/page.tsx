@@ -24,7 +24,8 @@ export default function Dashboard() {
     points, 
     stats, 
     log,
-    sendCommand 
+    sendCommand,
+    clearMap
   } = useLidarSocket(WS_URL);
 
   const handleSaveMap = () => {
@@ -118,6 +119,7 @@ export default function Dashboard() {
             onCommand={sendCommand} 
             onSaveMap={handleSaveMap}
             onEmailMap={handleEmailMap}
+            onClearMap={clearMap}
             onSaveToDB={openSaveModal}
           />
           <DataPanel stats={stats} log={log} />

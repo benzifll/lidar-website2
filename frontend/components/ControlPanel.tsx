@@ -1,6 +1,6 @@
 'use client';
 
-import { Play, Square, RefreshCw, Save, Mail } from 'lucide-react';
+import { Play, Square, RefreshCw, Save, Mail, Trash2 } from 'lucide-react';
 import { ConnectionStatus } from '../hooks/useLidarSocket';
 
 interface ControlPanelProps {
@@ -9,10 +9,11 @@ interface ControlPanelProps {
   onCommand: (cmd: 'start' | 'stop' | 'reset') => void;
   onSaveMap: () => void;
   onEmailMap: () => void;
+  onClearMap: () => void;
   onSaveToDB?: () => void;
 }
 
-export function ControlPanel({ status, isScanning, onCommand, onSaveMap, onEmailMap, onSaveToDB }: ControlPanelProps) {
+export function ControlPanel({ status, isScanning, onCommand, onSaveMap, onEmailMap, onClearMap, onSaveToDB }: ControlPanelProps) {
   const disabled = status !== 'connected';
 
   return (
@@ -44,6 +45,15 @@ export function ControlPanel({ status, isScanning, onCommand, onSaveMap, onEmail
         >
           <RefreshCw size={16} />
           Reset Sensor
+        </button>
+        
+        <button 
+          className="btn btn-secondary" 
+          disabled={disabled}
+          onClick={onClearMap}
+        >
+          <Trash2 size={16} />
+          Clear Map
         </button>
         
         <button 

@@ -162,5 +162,11 @@ export function useLidarSocket(url: string) {
     }
   }, [appendLog]);
 
-  return { status, port, baud, points, stats, log, sendCommand };
+  const clearMap = useCallback(() => {
+    setPoints([]);
+    pointsBuffer.current = [];
+    appendLog('Map cleared');
+  }, [appendLog]);
+
+  return { status, port, baud, points, stats, log, sendCommand, clearMap };
 }
