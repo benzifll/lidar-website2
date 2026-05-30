@@ -36,8 +36,8 @@ export const LidarMap = forwardRef<LidarMapRef, LidarMapProps>(({
     }
   }));
 
-  // Set max distance for a closer, zoomed-in view
-  const MAX_RADIUS_MM = 2000; // 2 meters — fits typical room size
+  // Match the ESP firmware's LIDAR_MAX_MM — never drop real readings
+  const MAX_RADIUS_MM = 8000;
   
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -61,29 +61,27 @@ export const LidarMap = forwardRef<LidarMapRef, LidarMapProps>(({
       const h = canvas.height;
       const cx = w / 2;
       const cy = h / 2;
-      const radius = Math.min(w, h) / 2 - 5; // 5px padding to make map as large as possible
+      const radius = Math.min(w, h) / 2 - 5;
       
       // Scale factor: pixels per mm
       const scale = radius / MAX_RADIUS_MM;
 
-      // Clear canvas with slight fade for trails
-      ctx.fillStyle = 'rgba(15, 17, 21, 0.8)';
+      // Clear canvas
+      ctx.fillStyle = '#000000';
       ctx.fillRect(0, 0, w, h);
 
-      // Draw grid
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+      // Draw distance rings: 1m, 2m, 4m, 6m, 8m
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
       ctx.lineWidth = 1;
-      
-      // 1m, 2m, 3m, 4m, 5m rings
-      for (let r = 1000; r <= MAX_RADIUS_MM; r += 1000) {
+      for (const r of [1000, 2000, 4000, 6000, 8000]) {
+        const pr = r * scale;
+        if (pr > radius) continue;
         ctx.beginPath();
-        ctx.arc(cx, cy, r * scale, 0, Math.PI * 2);
+        ctx.arc(cx, cy, pr, 0, Math.PI * 2);
         ctx.stroke();
-        
-        // Add text label
         ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
         ctx.font = '10px Inter';
-        ctx.fillText(`${r/1000}m`, cx + r * scale + 2, cy);
+        ctx.fillText(`${r/1000}m`, cx + pr + 2, cy);
       }
 
       // Draw crosshairs
@@ -94,53 +92,90 @@ export const LidarMap = forwardRef<LidarMapRef, LidarMapProps>(({
       ctx.lineTo(w, cy);
       ctx.stroke();
 
-      // Draw points
-      points.forEach(p => {
-        if (p.distance === 0 || p.distance > MAX_RADIUS_MM) return;
-        
-        // Convert polar to cartesian
-        // RPLiDAR angle is 0 at top (forward), increasing clockwise
-        const angleRad = (p.angle - 90) * (Math.PI / 180);
-        const px = cx + (p.distance * scale) * Math.cos(angleRad);
-        const py = cy + (p.distance * scale) * Math.sin(angleRad);
+      // ==========================================
+      // ROOM OUTLINE — ALL POINTS, NO LIMITS
+      // ==========================================
+      const sorted = [...points]
+        .filter(p => p.distance > 0 && p.distance <= MAX_RADIUS_MM)
+        .sort((a, b) => a.angle - b.angle)
+        .map(p => {
+          const rad = (p.angle - 90) * (Math.PI / 180);
+          return {
+            x: cx + p.distance * scale * Math.cos(rad),
+            y: cy + p.distance * scale * Math.sin(rad),
+            angle: p.angle,
+          };
+        });
 
-        // Color coding based on distance
-        let color = '#10b981'; // Green (near)
-        if (p.distance > 2000) color = '#f59e0b'; // Yellow (mid)
-        if (p.distance > 4000) color = '#ef4444'; // Red (far)
+      if (sorted.length > 1) {
+        // ── Build segments — split only on angle gaps > 5° ──
+        const segments: {x: number; y: number}[][] = [];
+        let seg: {x: number; y: number}[] = [sorted[0]];
 
-        ctx.fillStyle = color;
-        ctx.beginPath();
-        ctx.arc(px, py, 2, 0, Math.PI * 2);
-        ctx.fill();
-      });
+        for (let i = 1; i < sorted.length; i++) {
+          if (sorted[i].angle - sorted[i - 1].angle > 5) {
+            segments.push(seg);
+            seg = [];
+          }
+          seg.push(sorted[i]);
+        }
+        segments.push(seg);
 
-      // Draw scan line
-      if (isScanning) {
-        rotationRef.current = (rotationRef.current + 5) % 360;
-        const scanAngle = (rotationRef.current - 90) * (Math.PI / 180);
-        
-        // Create pie slice gradient
-        ctx.beginPath();
-        ctx.moveTo(cx, cy);
-        ctx.arc(cx, cy, radius, scanAngle - 0.2, scanAngle, false);
-        ctx.lineTo(cx, cy);
-        
-        const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
-        gradient.addColorStop(0, 'rgba(0, 191, 255, 0.5)');
-        gradient.addColorStop(1, 'rgba(0, 191, 255, 0)');
-        
-        ctx.fillStyle = gradient;
-        ctx.fill();
-        
-        // Leading line
-        ctx.beginPath();
-        ctx.moveTo(cx, cy);
-        ctx.lineTo(cx + radius * Math.cos(scanAngle), cy + radius * Math.sin(scanAngle));
-        ctx.strokeStyle = '#00BFFF';
-        ctx.lineWidth = 2;
-        ctx.stroke();
+        // ── Draw filled polygon (semi-transparent) + outline ──
+        segments.forEach(s => {
+          if (s.length < 2) return;
+
+          ctx.beginPath();
+          ctx.moveTo(s[0].x, s[0].y);
+          for (let i = 1; i < s.length; i++) {
+            // Smooth bezier within segment
+            const mx = (s[i - 1].x + s[i].x) / 2;
+            const my = (s[i - 1].y + s[i].y) / 2;
+            ctx.quadraticCurveTo(s[i - 1].x, s[i - 1].y, mx, my);
+          }
+          ctx.lineTo(s[s.length - 1].x, s[s.length - 1].y);
+
+          // Fill back to sensor origin for room-outline look
+          ctx.lineTo(cx, cy);
+          ctx.lineTo(s[0].x, s[0].y);
+
+          ctx.fillStyle = 'rgba(0, 255, 0, 0.07)';
+          ctx.fill();
+
+          // Draw the outline on top
+          ctx.beginPath();
+          ctx.moveTo(s[0].x, s[0].y);
+          for (let i = 1; i < s.length; i++) {
+            const mx = (s[i - 1].x + s[i].x) / 2;
+            const my = (s[i - 1].y + s[i].y) / 2;
+            ctx.quadraticCurveTo(s[i - 1].x, s[i - 1].y, mx, my);
+          }
+          ctx.lineTo(s[s.length - 1].x, s[s.length - 1].y);
+          ctx.strokeStyle = '#00FF00';
+          ctx.lineWidth = 2;
+          ctx.lineJoin = 'round';
+          ctx.lineCap = 'round';
+          ctx.stroke();
+        });
+
+        // ── Glowing red dot at the live scan tip ──
+        const latest = [...points]
+          .filter(p => p.distance > 0 && p.distance <= MAX_RADIUS_MM)
+          .slice(-1)[0];
+        if (latest) {
+          const rad = (latest.angle - 90) * (Math.PI / 180);
+          const lpx = cx + latest.distance * scale * Math.cos(rad);
+          const lpy = cy + latest.distance * scale * Math.sin(rad);
+          ctx.beginPath();
+          ctx.fillStyle = '#FF0000';
+          ctx.shadowColor = '#FF0000';
+          ctx.shadowBlur = 14;
+          ctx.arc(lpx, lpy, 5, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.shadowBlur = 0;
+        }
       }
+      // ==========================================
 
       // Draw Artefacts if they exist
       if (artefacts && artefacts.length > 0) {

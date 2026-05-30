@@ -68,6 +68,9 @@ serial_port = None
 is_reading = False
 current_port_name = "Unknown"
 current_baud = 115200
+# Set this to True if your LiDAR sensor is broken but the motor/ESP32 works.
+# It will run the real hardware process but inject fake distance data.
+SIMULATE_LIDAR_DATA_ONLY = True
 
 def find_lidar_port():
     ports = serial.tools.list_ports.comports()
@@ -187,11 +190,56 @@ async def serial_reader_task():
                         })
 
                 # Send all parsed points in one batch
-                if points:
+                if points and not SIMULATE_LIDAR_DATA_ONLY:
                     await manager.broadcast({
                         "type": "scan",
                         "points": points
                     })
+
+            # Simulate points continuously if enabled and scanning
+            if SIMULATE_LIDAR_DATA_ONLY and is_reading:
+                import math, random
+                global simulated_angle
+                if 'simulated_angle' not in globals():
+                    simulated_angle = 0.0
+
+                fake_points = []
+                for _ in range(15):  # 15 points per iteration (~3000 pts/sec)
+                    angle_deg = simulated_angle
+                    angle_rad = math.radians(angle_deg)
+                    
+                    cos_a = math.cos(angle_rad)
+                    sin_a = math.sin(angle_rad)
+                    
+                    dists = []
+                    if abs(cos_a) > 0.001:
+                        dists.append(abs(2000.0 / cos_a))
+                    if abs(sin_a) > 0.001:
+                        dists.append(abs(1500.0 / sin_a))
+                        
+                    dist_mm = min(dists) if dists else 2000.0
+                    dist_mm += random.uniform(-20, 20)
+                    
+                    # Add some fake objects
+                    if 40 < angle_deg < 50:
+                        dist_mm = min(dist_mm, 1000.0 + random.uniform(-10, 10))
+                    if 190 < angle_deg < 210:
+                        dist_mm = min(dist_mm, 1200.0 + random.uniform(-10, 10))
+                        
+                    fake_points.append({
+                        "angle": angle_deg,
+                        "distance": dist_mm,
+                        "quality": 15
+                    })
+                    
+                    simulated_angle += 1.0
+                    if simulated_angle >= 360.0:
+                        simulated_angle -= 360.0
+                        
+                await manager.broadcast({
+                    "type": "scan",
+                    "points": fake_points
+                })
 
             # Yield control to event loop
             await asyncio.sleep(0.005)
@@ -244,11 +292,13 @@ async def websocket_endpoint(websocket: WebSocket):
                 
                 if command == "start":
                     logger.info("Received start command")
+                    is_reading = True
                     if serial_port and serial_port.is_open:
                         serial_port.write(b'S')
                         
                 elif command == "stop":
                     logger.info("Received stop command")
+                    is_reading = False
                     if serial_port and serial_port.is_open:
                         serial_port.write(b'R') # Sending R to reset/home ESP32
                         

@@ -101,8 +101,11 @@ export function useLidarSocket(url: string) {
             // Track scanning state driven by ESP32 events
             if (data.scanning !== undefined) {
               setStats(s => ({ ...s, isScanning: data.scanning }));
-              // Clear the map of old points when a fresh scan begins
+              // Clear BOTH the React state AND the ref buffer when a fresh scan begins
               if (data.scanning === true) {
+                pointsBuffer.current = [];
+                maxDistRef.current = 0;
+                minDistRef.current = 9999;
                 setPoints([]);
               }
             }
@@ -118,8 +121,8 @@ export function useLidarSocket(url: string) {
               if (p.distance > 0 && p.distance < minDistRef.current) minDistRef.current = p.distance;
             });
 
-            // Keep a rolling window of 720 points (2 full rotations)
-            pointsBuffer.current = [...pointsBuffer.current, ...newPoints].slice(-720);
+            // Accumulate all points for this scan — buffer was cleared at SCAN_START
+            pointsBuffer.current = [...pointsBuffer.current, ...newPoints];
             setPoints([...pointsBuffer.current]);
             setStats(s => ({ ...s, isScanning: true }));
           }
